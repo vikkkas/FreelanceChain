@@ -113,7 +113,6 @@ router.post("/task", authMiddleware, async (req, res) => {
             message: "You've sent the wrong inputs"
         })
     }
-
     // const transaction = await connection.getTransaction(parseData.data.signature, {
     //     maxSupportedTransactionVersion: 1
     // });
@@ -141,35 +140,46 @@ router.post("/task", authMiddleware, async (req, res) => {
     // // parse the signature here to ensure the person has paid 0.1 SOL
     // // const transaction = Transaction.from(parseData.data.signature);
 
-
-
-    let response = await prismaClient.$transaction(async tx => {
-
-        const response = await tx.task.create({
-            data: {
-                title: parseData.data.title ?? DEFAULT_TITLE,
-                //@ts-ignore
-                amount: 1 * TOTAL_DECIMALS,
-                //TODO: Signature should be unique in the table else people can reuse a signature
-                signature: parseData.data.signature,
-                user_id: userId
-            }
+    try {
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+    
+        // const existingTask = await prismaClient.task.findFirst({
+        //     where: { signature: parseData.data.signature }
+        // });
+        // if (existingTask) {
+        //     return res.status(400).json({ message: "Signature already exists" });
+        // }
+    
+        let response = await prismaClient.$transaction(async tx => {
+            const response = await tx.task.create({
+                data: {
+                    title: parseData.data.title ?? DEFAULT_TITLE,
+                    amount: 1000000 ,
+                    signature: parseData.data.signature,
+                    // @ts-ignore
+                    user_id: user.id,
+                }
+            });
+        
+            await tx.option.createMany({
+                data: parseData.data.options.map(x => ({
+                    image_url: x.imageUrl,
+                    task_id: response.id
+                }))
+            });
+    
+            return response;
         });
-
-        await tx.option.createMany({
-            data: parseData.data.options.map(x => ({
-                image_url: x.imageUrl,
-                task_id: response.id
-            }))
-        })
-
-        return response;
-
-    })
-
-    res.json({
-        id: response.id
-    })
+    
+        res.json({ id: response.id });
+    } catch (e) {
+        // console.log(e);
+        return res.status(411).json({
+            message: "Transaction signature/amount incorrect"
+        });
+    }
 
 })
 
